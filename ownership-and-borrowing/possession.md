@@ -126,7 +126,7 @@ Pour mieux comprendre ce qu'il se passe, voyons comment est structurée la `Stri
     ┌───────────────────────┐         ┌───────────────────────────────┐
     │      Structure s1     │         │      Tableau de caractères    │
     │                       │         │                               │
-    │  ptr ────────────────►│────────►│  'h' 'e' 'l' 'l' 'o' [vide]...│
+    │  ptr ─────────────────┼────────►│  'h' 'e' 'l' 'l' 'o' [vide]...│
     │  len = 5              │         │                               │
     │  cap = N              │         │                               │
     └───────────────────────┘         │                               │
@@ -144,7 +144,7 @@ vers le tableau de caractères qui se trouve dans le tas.
     ┌───────────────────────┐         ┌───────────────────────────────┐
     │      Structure s1     │         │      Tableau de caractères    │
     │                       │         │                               │
-    │  ptr ────────────────►│────────►│  'h' 'e' 'l' 'l' 'o' [vide]...│
+    │  ptr ─────────────────┼────────►│  'h' 'e' 'l' 'l' 'o' [vide]...│
     │  len = 5              │         │                               │
     │  cap = N              │         │                               │
     └───────────────────────┘         │                               │
@@ -161,4 +161,113 @@ vers le tableau de caractères qui se trouve dans le tas.
 On voit bien, que les données utiles (le tableau de caractères), n'a pas été copié. À la place, 
 on a 2 structures `s1` et `s2` qui contiennent un pointeur vers le tableau situé dans le tas.
 
-Qu
+_Que se passe-t-il à la fin du programme (arrivé à `}`) ?_
+
+Nous avons vu plus haut, qu'à ce moment, Rust appelle la fonction `drop` sur les variables allouées dans le tas. Cela 
+va supprimer l'espace alloué dans le tas et désallouer dans la pile la structure de `s1` et `s2`. Or `s1`
+et `s2` pointent vers **le même espace mémoire**. Pour régler ce problème, Rust va partir du principe qu'après la 
+ligne `let s2 = s1`, `s1` ne sera plus en vigueur. Ainsi le code suivant : 
+
+```rust
+{
+    let s1 = String::from("hello"); 
+    let s2 = s1;
+    println!("{}", s1);
+}   
+```
+
+Produira une **erreur** :
+
+```
+error[E0382]: borrow of moved value: `s1`
+ --> src/main.rs:5:28
+  |
+2 |     let s1 = String::from("hello");
+  |         -- move occurs because `s1` has type `String`, which does not implement the `Copy` trait
+3 |     let s2 = s1;
+  |              -- value moved here
+4 | 
+5 |     println!("{}, world!", s1);
+  |                            ^^ value borrowed here after move
+```
+
+En Rust, l'instruction `let s2 = s1`, est appelée un **déplacement**. On dira que `s1` a été déplacé dans `s2`. La véritable
+forme du schéma précédent est donc :
+
+```
+          [ PILE / STACK ]                    [ TAS / HEAP ]
+    ┌─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┐         ┌───────────────────────────────┐
+           Structure s1               │      Tableau de caractères    │
+    │       [invalidé]      │         │                               │
+       ptr ─────────────────────────► │  'h' 'e' 'l' 'l' 'o' [vide]...│
+    │  len = 5              │         │                               │
+       cap = N                        │                               │
+    └─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘         │                               │
+                                      └───────────────────────────────┘
+    ┌───────────────────────┐                 ▲
+    │      Structure s2     │                 │
+    │      [en vigueur]     │                 │
+    │  ptr ─────────────────┼─────────────────┘
+    │  len = 5              │
+    │  cap = N              │
+    └───────────────────────┘
+```
+
+Plus de problème lors de l'appel au drop à la fin de la portée : il n'y a que le drop sur `s2` à réaliser, car `s1` n'est déjà
+plus en vigueur !
+
+Cela traduit aussi un choix de conception du langage Rust : il ne va jamais créer automatique une copie "profonde" des 
+données. Par conséquent, toute copie automatique peut être considérée comme peu coûteuse en termes de performance.
+
+## Le clonage
+
+Pour faire explicitement une copie profonde des données sur le tas d'une `String` (et pas uniquement des données sur la pile),
+il est possible d'utiliser la méthode `clone()`.
+
+```rust
+    let s1 = String::from("hello"); 
+    let s2 = s1.clone();
+    println!("{}", s1);
+```
+
+Cet extrait de code ne pose aucun problème lors de la compilation et fonctionnera parfaitement. Cependant, ce type d'opérations
+est plus coûteuse. 
+
+## La copie des données uniquement sur la pile
+
+Le code suivant semble contredire ce que l'on vient de voir, car il fonctionne parfaitement :
+
+```rust
+    let x = 5;
+    let y = x;
+    
+    println!("x = {}, y = {}", x, y);
+```
+
+Nous n'avons pas appelé `x.clone()` et il n'y a pourtant aucun problème. La raison est que pour les variables stockées dans
+la pile (comme les entiers, les réels, les booléens…), la copie est très rapide. Donc pas de différence entre la copie superficielle 
+et la copie profonde. Appeler `clone()` devient donc inutile.
+
+## Les traits `Copy` et `Drop`
+
+Si un type implémente le trait `Copy` (comme les entiers, les réels, les booléens…) alors une variable sera toujours en
+vigueur après avoir été affecté à une autre variable.
+
+Si un type implémente le trait `Drop`, c'est l'inverse et le type se comportera comme les `String` que nous avons vu plus haut.
+
+> À noter :
+> 
+> Le compilateur Rust n'autorise pas à annoter un type (une structure) avec le trait `Copy` si ce type ou un de ses membres
+> implémente le type `Drop`.
+
+Voici quelques exemples de types qui implémentent le trait `Copy` :
+
+- tous les types entiers (comme `u32`),
+- le type booléen `bool`
+- tous les types flottants (comme `f64`),
+- le type caractère, `char`,
+- Les tuples, mais uniquement s'ils sont composés de type implémentant le trait `Copy`. Par exemple : `(i32, i32)`.
+
+
+## La possession et les fonctions
+
