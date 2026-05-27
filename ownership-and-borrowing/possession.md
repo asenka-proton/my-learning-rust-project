@@ -67,7 +67,7 @@ Ce type de chaine de caractères peut être mutable (mais pas obligatoirement) :
 {
     let mut s = String::from("hello");
     s.push_str(", world!");
-    println !("{}, s");
+    println!("{}, s");
 }
 ```
 
@@ -270,4 +270,74 @@ Voici quelques exemples de types qui implémentent le trait `Copy` :
 
 
 ## La possession et les fonctions
+
+Passer une variable à une fonction est similaire à une assignation de variable tel que vu précédemment : cela va
+déplacer ou copier la variable dans la fonction. 
+
+```rust
+fn main() {
+    
+    let s = String::from("hello");  // `s` entre dans la portée (String -> Drop)
+    prendre_possession(s);          // La valeur de `s` est déplacée dans la fonction...
+                                    // ... et n'est plus en vigueur à partir d'ici !
+                                    // La mémoire associée à `s` a déjà été libérée.
+    
+    let x = 5;                  // `x` entre dans la portée (i32 -> Copy)
+    creer_copie(x);             // `x` va être déplacée dans la fonction, mais c'est un i32.
+    println!("[main] x={}", x); // i32 implémente le trait Copy, donc x reste utilisable
+    
+}   // Ici `x` sort de la portée donc sa valeur est supprimée de la pile. C'est aussi le cas
+    // de `s` mais comme sa valeur a été déplacée, rien ne se produit à ce niveau pour `s`
+
+fn prendre_possession(txt: String) {    // `txt` entre dans la portée avec la valeur que la fonction 
+                                        // appelante lui a donnée (`s`)
+    println!("{}", txt);
+} // Ici, `txt` sort de la portée, la fonction String.drop() est appelée pour libérer la mémoire.
+
+fn creer_copie(n: i32) { // `n` entre dans la portée
+    println!("{}", n);
+} // Ici n sort de la portée, il est retiré de la pile, mais cela n'a pas d'impact sur le `x` de main() 
+  // car la valeur a été intégralement copiée.
+```
+
+Si on avait essayé d'utiliser la variable `s` après l'instruction `prendre_possession(s);`, Le programme n'aurait pas 
+compilé (_Value used after being moved [E0382]_).
+
+**Retourner des valeurs** peut aussi transférer leur possession. Voyons cela encore avec un exemple concret : 
+
+```rust
+fn main() {
+    
+    let s1 = donner_possession();       // Déplace la valeur retournée par donner_possession()
+                                        // dans la variable `s1` (String).
+    
+    let s2 = String::from("hello");     // `s2` entre dans la portée
+    
+    let s3 = prendre_et_rendre(s2);     // `s2` est déplacée dans prendre_et_rendre()
+                                        // à la fin, la fonction va rendre la valeur qui
+                                        // sera assignée (déplacée) dans `s3`
+} // Ici, `s3` sort de la portée et la mémoire associée est libérée. 
+  // `s2` a été déplacée, donc il ne se passe rien pour elle.
+  // `s1` sort de la portée et sa mémoire est également libérée.
+
+fn donner_possession() -> String {
+    let txt = String::from("JuJu");     // `txt` entre dans la portée
+    txt         // `txt` est retournée et est déplacée dans la fonction appelante
+}
+
+// La fonction prend un String en entrée et retourne ce même String
+fn prendre_et_rendre(txt: String) -> String {   // `txt` entre dans la portée
+    txt         // `txt` est retournée et est déplacée dans la fonction appelante
+}
+```
+
+La possession d'une variable suit toujours le même schéma : assigner une valeur à une autre variable la **déplace**. 
+Quand une variable qui contient des données sur le tas sort de la portée, la valeur sera nettoyée avec `drop` à moins
+que la possession de cette donnée soit donnée à une autre variable.
+
+La question qui se pose maintenant est : **comment faire en sorte de passer une valeur à une fonction, mais que cette
+dernière n'en prenne pas possession ?** Il serait possible de renvoyer la valeur à chaque fois (comme avec `prendre_et_rendre()`),
+mais cela peut vite devenir compliqué et peu lisible.
+
+Pour cela Rust propose une fonctionnalité qui s'appelle les **références**.
 
