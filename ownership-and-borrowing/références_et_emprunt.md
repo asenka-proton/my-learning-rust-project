@@ -163,3 +163,33 @@ fn main() {
 
 ### Les références "pendouillantes"
 
+Une "référence pendouillante" (ou "dangling pointer") est un pointeur qui pointe vers un emplacement mémoire qui  
+a déjà été libéré. La force de Rust est justement de prévenir ce type de situation directement à la compilation. Voyons
+un exemple qui essaie de créer une référence pendouillante (ce code ne compile pas) :
+
+```rust
+fn main() {
+    let str = pendouille(); // la fonction renvoie une référence vers un String (&String)
+}
+
+fn pendouille() -> &String {      
+    let s = String::from("hello");   // `s` entre dans la portée de la fonction pendouille()
+    &s // On renvoie la référence vers `s`
+}  // Ici, `s` sort de la portée et la mémoire associée est libérée
+```
+
+L'erreur ici fait référence à la notion de durée de vie (non traitée dans cette section). Le compilateur expliquera en 
+complément : "_Le type de retour de cette fonction contient une valeur empruntée, mais il n'y a
+plus aucune valeur qui peut être empruntée._" 
+
+La solution dans ce cas précis serait que la fonctione `pendouille()` renvoie un `String` et pas une référence. De cette
+façon la possession de la valeur renvoyée est donnée à la variable `str` dans la fonction `main()`.
+
+## Les règles de référencement
+
+Deux règles à retenir de ce chapitre :
+
+1. A un instant donné, vous pouvez avoir :
+   - soit, une seule référence **mutable**,
+   - soit, un nombre quelconque de références **immuables**.
+2. Les références doivent toujours être **en vigueur**.
